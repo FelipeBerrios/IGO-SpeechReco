@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "550226479382",
+    "firebase_url": "https://igo-speechreco-959cf.firebaseio.com",
+    "project_id": "igo-speechreco-959cf",
+    "storage_bucket": "igo-speechreco-959cf.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:550226479382:android:89cf371723984ca3",
+        "android_client_info": {
+          "package_name": "com.igo.SpeechReco"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "550226479382-bm35ntuhomh3tpdksdmr3gfd8rs9q3ue.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.igo.SpeechReco",
+            "certificate_hash": "71939829FF1C48C807517E4A041F676775400F1C"
+          }
+        },
+        {
+          "client_id": "550226479382-jm2ltjnpk2efillfe76db782prtjfs4g.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBgHeNbCstDJTi1GhpfNz6TJbC1NU4sUbU"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 2,
+          "other_platform_oauth_client": [
+            {
+              "client_id": "550226479382-jm2ltjnpk2efillfe76db782prtjfs4g.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

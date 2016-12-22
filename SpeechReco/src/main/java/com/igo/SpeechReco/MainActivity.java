@@ -34,13 +34,26 @@ package com.igo.SpeechReco;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.support.v4.content.ContextCompat;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.Toolbar;
+import android.support.v7.app.AppCompatActivity;
+import android.text.Editable;
+import android.text.InputFilter;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ProgressBar;
 import android.widget.RadioGroup;
 import android.widget.ListView;
 import android.speech.tts.TextToSpeech;
@@ -48,6 +61,18 @@ import android.speech.tts.TextToSpeech;
 import android.database.DataSetObserver;
 import android.view.KeyEvent;
 import android.widget.AbsListView;
+
+import com.bumptech.glide.Glide;
+import com.firebase.ui.database.FirebaseRecyclerAdapter;
+
+import com.google.android.gms.auth.api.Auth;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import de.hdodenhof.circleimageview.CircleImageView;
 
 import com.microsoft.bing.speech.SpeechClientStatus;
 import com.microsoft.cognitiveservices.speechrecognition.DataRecognitionClient;
@@ -62,10 +87,46 @@ import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import android.widget.TextView;
+import android.widget.Toast;
 
-public class MainActivity extends Activity implements ISpeechRecognitionServerEvents {
+public class MainActivity extends AppCompatActivity implements ISpeechRecognitionServerEvents, GoogleApiClient.OnConnectionFailedListener {
 
-    private static final String TAG = "ChatActivity";
+
+    public static class MessageViewHolder extends RecyclerView.ViewHolder {
+        public TextView messageTextView;
+        public TextView messengerTextView;
+        public CircleImageView messengerImageView;
+
+        public MessageViewHolder(View v) {
+            super(v);
+            messageTextView = (TextView) itemView.findViewById(R.id.messageTextView);
+            messengerTextView = (TextView) itemView.findViewById(R.id.messengerTextView);
+            messengerImageView = (CircleImageView) itemView.findViewById(R.id.messengerImageView);
+        }
+    }
+
+    private static final String TAG = "MainActivity";
+    public static final String MESSAGES_CHILD = "messages";
+    public static final int DEFAULT_MSG_LENGTH_LIMIT = 1000;
+    public static final String ANONYMOUS = "anonymous";
+    private String mUsername;
+    private String mPhotoUrl;
+    private SharedPreferences mSharedPreferences;
+    private GoogleApiClient mGoogleApiClient;
+
+    private Button mSendButton;
+    private RecyclerView mMessageRecyclerView;
+    private LinearLayoutManager mLinearLayoutManager;
+    private ProgressBar mProgressBar;
+    private EditText mMessageEditText;
+
+    private FirebaseAuth mFirebaseAuth;
+    private FirebaseUser mFirebaseUser;
+
+    private DatabaseReference mFirebaseDatabaseReference;
+    private FirebaseRecyclerAdapter<FriendlyMessage, MessageViewHolder> mFirebaseAdapter;
+
+    //private static final String TAG = "ChatActivity";
 
     private ChatArrayAdapter chatArrayAdapter;
     private ListView listView;
@@ -157,6 +218,8 @@ public class MainActivity extends Activity implements ISpeechRecognitionServerEv
         return "batman.wav";
     }
 
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 
@@ -164,7 +227,129 @@ public class MainActivity extends Activity implements ISpeechRecognitionServerEv
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        tts=new TextToSpeech(MainActivity.this, new TextToSpeech.OnInitListener() {
+        mSharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        // Set default username is anonymous.
+        mUsername = ANONYMOUS;
+
+        // Initialize Firebase Auth
+        mFirebaseAuth = FirebaseAuth.getInstance();
+        mFirebaseUser = mFirebaseAuth.getCurrentUser();
+        if (mFirebaseUser == null) {
+            // Not signed in, launch the Sign In activity
+            startActivity(new Intent(this, SignInActivity.class));
+            finish();
+            return;
+        } else {
+            mUsername = mFirebaseUser.getDisplayName();
+            if (mFirebaseUser.getPhotoUrl() != null) {
+                mPhotoUrl = mFirebaseUser.getPhotoUrl().toString();
+            }
+        }
+
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+                .enableAutoManage(this /* FragmentActivity */, this /* OnConnectionFailedListener */)
+                .addApi(Auth.GOOGLE_SIGN_IN_API)
+                .build();
+
+        // Initialize ProgressBar and RecyclerView.
+        mProgressBar = (ProgressBar) findViewById(R.id.progressBar);
+        mMessageRecyclerView = (RecyclerView) findViewById(R.id.messageRecyclerView);
+        mLinearLayoutManager = new LinearLayoutManager(this);
+        mLinearLayoutManager.setStackFromEnd(true);
+        mMessageRecyclerView.setLayoutManager(mLinearLayoutManager);
+
+        // New child entries
+        mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
+        mFirebaseAdapter = new FirebaseRecyclerAdapter<FriendlyMessage,
+                MessageViewHolder>(
+                FriendlyMessage.class,
+                R.layout.item_message,
+                MessageViewHolder.class,
+                mFirebaseDatabaseReference.child(MESSAGES_CHILD)) {
+
+            @Override
+            protected void populateViewHolder(MessageViewHolder viewHolder,
+                                              FriendlyMessage friendlyMessage, int position) {
+                mProgressBar.setVisibility(ProgressBar.INVISIBLE);
+                viewHolder.messageTextView.setText(friendlyMessage.getText());
+                viewHolder.messengerTextView.setText(friendlyMessage.getName());
+                if (friendlyMessage.getPhotoUrl() == null) {
+                    viewHolder.messengerImageView
+                            .setImageDrawable(ContextCompat
+                                    .getDrawable(MainActivity.this,
+                                            R.drawable.ic_account_circle_black_36dp));
+                } else {
+                    Glide.with(MainActivity.this)
+                            .load(friendlyMessage.getPhotoUrl())
+                            .into(viewHolder.messengerImageView);
+                }
+            }
+        };
+
+        mFirebaseAdapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override
+            public void onItemRangeInserted(int positionStart, int itemCount) {
+                super.onItemRangeInserted(positionStart, itemCount);
+                int friendlyMessageCount = mFirebaseAdapter.getItemCount();
+                int lastVisiblePosition =
+                        mLinearLayoutManager.findLastCompletelyVisibleItemPosition();
+                // If the recycler view is initially being loaded or the
+                // user is at the bottom of the list, scroll to the bottom
+                // of the list to show the newly added message.
+                if (lastVisiblePosition == -1 ||
+                        (positionStart >= (friendlyMessageCount - 1) &&
+                                lastVisiblePosition == (positionStart - 1))) {
+                    mMessageRecyclerView.scrollToPosition(positionStart);
+                }
+            }
+        });
+
+        mMessageRecyclerView.setLayoutManager(mLinearLayoutManager);
+        mMessageRecyclerView.setAdapter(mFirebaseAdapter);
+
+        mMessageEditText = (EditText) findViewById(R.id.messageEditText);
+        mMessageEditText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(mSharedPreferences
+                .getInt(CodelabPreferences.FRIENDLY_MSG_LENGTH, DEFAULT_MSG_LENGTH_LIMIT))});
+        mMessageEditText.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+                if (charSequence.toString().trim().length() > 0) {
+                    mSendButton.setEnabled(true);
+                } else {
+                    mSendButton.setEnabled(false);
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+            }
+        });
+
+        mSendButton = (Button) findViewById(R.id.sendButton);
+        mSendButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                FriendlyMessage friendlyMessage = new
+                        FriendlyMessage(mMessageEditText.getText().toString(),
+                        mUsername,
+                        mPhotoUrl);
+                mFirebaseDatabaseReference.child(MESSAGES_CHILD)
+                        .push().setValue(friendlyMessage);
+                mMessageEditText.setText("");
+            }
+        });
+
+
+        //********************************************************************************
+
+        Toolbar myToolbar = (Toolbar) findViewById(R.id.my_toolbar);
+        setSupportActionBar(myToolbar);
+
+        /*tts=new TextToSpeech(MainActivity.this, new TextToSpeech.OnInitListener() {
 
             @Override
             public void onInit(int status) {
@@ -182,16 +367,16 @@ public class MainActivity extends Activity implements ISpeechRecognitionServerEv
                 else
                     Log.e("error", "Initilization Failed!");
             }
-        });
+        });*/
 
-        buttonSend = (Button) findViewById(R.id.send);
+        //buttonSend = (Button) findViewById(R.id.send);
 
-        listView = (ListView) findViewById(R.id.msgview);
+        //listView = (ListView) findViewById(R.id.msgview);
 
-        chatArrayAdapter = new ChatArrayAdapter(getApplicationContext(), R.layout.right);
-        listView.setAdapter(chatArrayAdapter);
+        //chatArrayAdapter = new ChatArrayAdapter(getApplicationContext(), R.layout.right);
+        //listView.setAdapter(chatArrayAdapter);
 
-        chatText = (EditText) findViewById(R.id.msg);
+        /*chatText = (EditText) findViewById(R.id.msg);
         chatText.setOnKeyListener(new View.OnKeyListener() {
             public boolean onKey(View v, int keyCode, KeyEvent event) {
                 if ((event.getAction() == KeyEvent.ACTION_DOWN) && (keyCode == KeyEvent.KEYCODE_ENTER)) {
@@ -208,19 +393,19 @@ public class MainActivity extends Activity implements ISpeechRecognitionServerEv
                 sendChatMessage(false, chatText.getText().toString());
 
             }
-        });
+        });*/
 
-        listView.setTranscriptMode(AbsListView.TRANSCRIPT_MODE_ALWAYS_SCROLL);
-        listView.setAdapter(chatArrayAdapter);
+        //listView.setTranscriptMode(AbsListView.TRANSCRIPT_MODE_ALWAYS_SCROLL);
+        //listView.setAdapter(chatArrayAdapter);
 
         //to scroll the list view to bottom on data change
-        chatArrayAdapter.registerDataSetObserver(new DataSetObserver() {
+        /*chatArrayAdapter.registerDataSetObserver(new DataSetObserver() {
             @Override
             public void onChanged() {
                 super.onChanged();
                 listView.setSelection(chatArrayAdapter.getCount() - 1);
             }
-        });
+        });*/
 
 
         //this._logText = (EditText) findViewById(R.id.editText1);
@@ -273,19 +458,19 @@ public class MainActivity extends Activity implements ISpeechRecognitionServerEv
         super.onPause();
     }
 */
-    private void ConvertTextToSpeech() {
+    /*private void ConvertTextToSpeech() {
         String speak = chatText.getText().toString();
         // TODO Auto-generated method stub
         tts.speak(speak, TextToSpeech.QUEUE_FLUSH, null);
-    }
+    }*/
 
     private boolean sendChatMessage(boolean isMic, String mytext) {
         if(isMic){
-            chatArrayAdapter.add(new ChatMessage(false, mytext));
+            //chatArrayAdapter.add(new ChatMessage(false, mytext));
         }
         else{
-            chatArrayAdapter.add(new ChatMessage(true, mytext));
-            chatText.setText("");
+            //chatArrayAdapter.add(new ChatMessage(true, mytext));
+            //chatText.setText("");
 
         }
         return true;
@@ -308,7 +493,6 @@ public class MainActivity extends Activity implements ISpeechRecognitionServerEv
     private void StartButton_Click(View arg0) {
         this._startButton.setEnabled(false);
         this._startButton.setText("Reconociendo");
-        //this._radioGroup.setEnabled(false);
 
         this.m_waitSeconds = this.getMode() == SpeechRecognitionMode.ShortPhrase ? 20 : 100;
 
@@ -430,7 +614,14 @@ public class MainActivity extends Activity implements ISpeechRecognitionServerEv
 
             }
             else{
-                sendChatMessage(true, response.Results[0].DisplayText);
+                FriendlyMessage friendlyMessage = new
+                        FriendlyMessage(response.Results[0].DisplayText,
+                        mUsername,
+                        mPhotoUrl);
+                mFirebaseDatabaseReference.child(MESSAGES_CHILD)
+                        .push().setValue(friendlyMessage);
+                //mMessageEditText.setText("");
+                //sendChatMessage(true, response.Results[0].DisplayText);
             }
 
         }
@@ -454,10 +645,8 @@ public class MainActivity extends Activity implements ISpeechRecognitionServerEv
 
     public void onError(final int errorCode, final String response) {
         this._startButton.setEnabled(true);
-        this.WriteLine("--- Error received by onError() ---");
-        this.WriteLine("Error code: " + SpeechClientStatus.fromInt(errorCode) + " " + errorCode);
-        this.WriteLine("Error text: " + response);
-        this.WriteLine();
+        Log.e("Error code: " + SpeechClientStatus.fromInt(errorCode) + " " + errorCode, "error");
+        Log.e("Error text: " + response, "error");
     }
 
     /**
@@ -476,6 +665,21 @@ public class MainActivity extends Activity implements ISpeechRecognitionServerEv
             this.micClient.endMicAndRecognition();
             this._startButton.setEnabled(true);
         }
+    }
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+        // An unresolvable error has occurred and Google APIs (including Sign-In) will not
+        // be available.
+        Log.d(TAG, "onConnectionFailed:" + connectionResult);
+        Toast.makeText(this, "Google Play Services error.", Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        // Check if user is signed in.
+        // TODO: Add code to check if user is signed in.
     }
 
     /**
