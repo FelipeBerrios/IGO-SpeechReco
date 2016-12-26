@@ -32,7 +32,6 @@
  */
 package com.igo.SpeechReco;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -49,18 +48,16 @@ import android.text.Editable;
 import android.text.InputFilter;
 import android.text.TextWatcher;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.View.OnClickListener;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.RadioGroup;
 import android.widget.ListView;
 import android.speech.tts.TextToSpeech;
-
-import android.database.DataSetObserver;
-import android.view.KeyEvent;
-import android.widget.AbsListView;
 
 import com.bumptech.glide.Glide;
 import com.firebase.ui.database.FirebaseRecyclerAdapter;
@@ -83,7 +80,6 @@ import com.microsoft.cognitiveservices.speechrecognition.RecognitionStatus;
 import com.microsoft.cognitiveservices.speechrecognition.SpeechRecognitionMode;
 import com.microsoft.cognitiveservices.speechrecognition.SpeechRecognitionServiceFactory;
 import java.io.InputStream;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import android.widget.TextView;
@@ -92,16 +88,29 @@ import android.widget.Toast;
 public class MainActivity extends AppCompatActivity implements ISpeechRecognitionServerEvents, GoogleApiClient.OnConnectionFailedListener {
 
 
-    public static class MessageViewHolder extends RecyclerView.ViewHolder {
+    public static class MessageViewHolderLeft extends RecyclerView.ViewHolder {
         public TextView messageTextView;
         public TextView messengerTextView;
         public CircleImageView messengerImageView;
 
-        public MessageViewHolder(View v) {
+        public MessageViewHolderLeft(View v) {
             super(v);
-            messageTextView = (TextView) itemView.findViewById(R.id.messageTextView);
-            messengerTextView = (TextView) itemView.findViewById(R.id.messengerTextView);
-            messengerImageView = (CircleImageView) itemView.findViewById(R.id.messengerImageView);
+            messageTextView = (TextView) itemView.findViewById(R.id.messageTextViewLeft);
+            messengerTextView = (TextView) itemView.findViewById(R.id.messengerTextViewLeft);
+            messengerImageView = (CircleImageView) itemView.findViewById(R.id.messengerImageViewLeft);
+        }
+    }
+
+    public static class MessageViewHolderRight extends RecyclerView.ViewHolder {
+        public TextView messageTextView;
+        public TextView messengerTextView;
+        public CircleImageView messengerImageView;
+
+        public MessageViewHolderRight(View v) {
+            super(v);
+            messageTextView = (TextView) itemView.findViewById(R.id.messageTextViewRight);
+            messengerTextView = (TextView) itemView.findViewById(R.id.messengerTextViewRight);
+            messengerImageView = (CircleImageView) itemView.findViewById(R.id.messengerImageViewRight);
         }
     }
 
@@ -124,7 +133,7 @@ public class MainActivity extends AppCompatActivity implements ISpeechRecognitio
     private FirebaseUser mFirebaseUser;
 
     private DatabaseReference mFirebaseDatabaseReference;
-    private FirebaseRecyclerAdapter<FriendlyMessage, MessageViewHolder> mFirebaseAdapter;
+    private FirebaseRecyclerAdapter<FriendlyMessage, RecyclerView.ViewHolder> mFirebaseAdapter;
 
     //private static final String TAG = "ChatActivity";
 
@@ -261,27 +270,77 @@ public class MainActivity extends AppCompatActivity implements ISpeechRecognitio
         // New child entries
         mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
         mFirebaseAdapter = new FirebaseRecyclerAdapter<FriendlyMessage,
-                MessageViewHolder>(
+                RecyclerView.ViewHolder>(
                 FriendlyMessage.class,
-                R.layout.item_message,
-                MessageViewHolder.class,
+                R.layout.item_message_left,
+                RecyclerView.ViewHolder.class,
                 mFirebaseDatabaseReference.child(MESSAGES_CHILD)) {
 
             @Override
-            protected void populateViewHolder(MessageViewHolder viewHolder,
-                                              FriendlyMessage friendlyMessage, int position) {
+            protected void populateViewHolder(final RecyclerView.ViewHolder viewHolder,
+                                              final FriendlyMessage friendlyMessage, int position) {
+
+
                 mProgressBar.setVisibility(ProgressBar.INVISIBLE);
-                viewHolder.messageTextView.setText(friendlyMessage.getText());
-                viewHolder.messengerTextView.setText(friendlyMessage.getName());
-                if (friendlyMessage.getPhotoUrl() == null) {
-                    viewHolder.messengerImageView
-                            .setImageDrawable(ContextCompat
-                                    .getDrawable(MainActivity.this,
-                                            R.drawable.ic_account_circle_black_36dp));
-                } else {
-                    Glide.with(MainActivity.this)
-                            .load(friendlyMessage.getPhotoUrl())
-                            .into(viewHolder.messengerImageView);
+                if(friendlyMessage.getName().equals(mUsername) ){
+
+                    MessageViewHolderRight viewHolderR = (MessageViewHolderRight) viewHolder;
+                    viewHolderR.messageTextView.setText(friendlyMessage.getText());
+                    viewHolderR.messengerTextView.setText(friendlyMessage.getName());
+                    if (friendlyMessage.getPhotoUrl() == null) {
+                        viewHolderR.messengerImageView
+                                .setImageDrawable(ContextCompat
+                                        .getDrawable(MainActivity.this,
+                                                R.drawable.ic_account_circle_black_36dp));
+                    } else {
+                        Glide.with(MainActivity.this)
+                                .load(friendlyMessage.getPhotoUrl())
+                                .into(viewHolderR.messengerImageView);
+                    }
+                }
+                else{
+                    MessageViewHolderLeft viewHolderL = (MessageViewHolderLeft) viewHolder;
+                    viewHolderL.messageTextView.setText(friendlyMessage.getText());
+                    viewHolderL.messengerTextView.setText(friendlyMessage.getName());
+                    if (friendlyMessage.getPhotoUrl() == null) {
+                        viewHolderL.messengerImageView
+                                .setImageDrawable(ContextCompat
+                                        .getDrawable(MainActivity.this,
+                                                R.drawable.ic_account_circle_black_36dp));
+                    } else {
+                        Glide.with(MainActivity.this)
+                                .load(friendlyMessage.getPhotoUrl())
+                                .into(viewHolderL.messengerImageView);
+                    }
+
+                }
+
+            }
+
+            @Override
+            public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+                switch (viewType) {
+                    case 1:
+                        View userType1 = LayoutInflater.from(parent.getContext())
+                                .inflate(R.layout.item_message_left, parent, false);
+                        return new MessageViewHolderLeft(userType1);
+                    case 2:
+                        View userType2 = LayoutInflater.from(parent.getContext())
+                                .inflate(R.layout.item_message_right, parent, false);
+                        return new MessageViewHolderRight(userType2);
+                }
+                return super.onCreateViewHolder(parent, viewType);
+            }
+
+            @Override
+            public int getItemViewType(int position) {
+                FriendlyMessage user = getItem(position);
+
+                if(user.getName().equals(mUsername)) {
+                    return 2;
+                }
+                else{
+                    return 1;
                 }
             }
         };
@@ -621,7 +680,7 @@ public class MainActivity extends AppCompatActivity implements ISpeechRecognitio
                 mFirebaseDatabaseReference.child(MESSAGES_CHILD)
                         .push().setValue(friendlyMessage);
                 //mMessageEditText.setText("");
-                //sendChatMessage(true, response.Results[0].DisplayText);
+                sendChatMessage(true, response.Results[0].DisplayText);
             }
 
         }
